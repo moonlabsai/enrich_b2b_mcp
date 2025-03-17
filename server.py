@@ -1,15 +1,17 @@
 """
-MCP Server Template with OpenAI and Anthropic integration.
+MCP Server Template with OpenAI, Anthropic, and EnrichB2B integration.
 """
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from dataclasses import dataclass
+from typing import AsyncIterator
+import sys
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from mcp.server.fastmcp import Context, FastMCP, Image, types
+from mcp.server.fastmcp import FastMCP, Context
 from openai import OpenAI
 from anthropic import Anthropic
+from enrichb2b import EnrichB2BConfig, EnrichB2BClient, ContactRequest, ContactActivitiesRequest
 
 # Load environment variables
 load_dotenv()
@@ -17,78 +19,127 @@ load_dotenv()
 # Initialize API clients
 openai_client = OpenAI()
 anthropic_client = Anthropic()
+enrichb2b_config = EnrichB2BConfig(os.getenv("ENRICHB2B_API_KEY", ""))
+enrichb2b_client = EnrichB2BClient(enrichb2b_config)
 
-# Create FastAPI app
-app = FastAPI(title="MCP Template Server")
-
-# Create MCP server
-mcp = FastMCP(
-    "MCP Template",
-    dependencies=["openai", "anthropic", "pandas"],
-    description="A template MCP server with OpenAI and Anthropic integration"
-)
+@dataclass
+class AppContext:
+    """Application context with API clients"""
+    openai: OpenAI
+    anthropic: Anthropic
+    enrichb2b: EnrichB2BClient
 
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[dict]:
-    """Manage application lifecycle."""
-    # Initialize resources on startup
-    print("Starting MCP server...")
+async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
+    """Manage application lifecycle with type-safe context"""
+    print("Starting MCP server...", file=sys.stderr)
     try:
-        yield {
-            "openai_client": openai_client,
-            "anthropic_client": anthropic_client
-        }
+        print("Initializing API clients...", file=sys.stderr)
+        yield AppContext(
+            openai=openai_client,
+            anthropic=anthropic_client,
+            enrichb2b=enrichb2b_client
+        )
+        print("API clients initialized successfully", file=sys.stderr)
+    except Exception as e:
+        print(f"Error during initialization: {str(e)}", file=sys.stderr)
+        raise
     finally:
-        # Cleanup on shutdown
-        print("Shutting down MCP server...")
+        print("Shutting down MCP server...", file=sys.stderr)
 
-# Pass lifespan to server
-mcp = FastMCP("MCP Template", lifespan=app_lifespan)
+# Create MCP server with dependencies
+mcp = FastMCP(
+    "LinkedIn Research",
+    dependencies=["openai", "anthropic", "enrichb2b"],
+    description="A server for LinkedIn research and analysis",
+    lifespan=app_lifespan
+)
 
-# Example Resource
-@mcp.resource("config://app")
-def get_config() -> str:
-    """Get application configuration."""
-    return "Template MCP Server Configuration"
+@mcp.resource("profile://{linkedin_url}")
+async def get_profile_resource(linkedin_url: str) -> str:
+    """Get LinkedIn profile data as a resource."""
+    request = ContactRequest(linkedin_url=linkedin_url)
+    result = enrichb2b_client.search_contact(request)
+    return str(result)
 
-# Example Tool - OpenAI Integration
 @mcp.tool()
-async def gpt4_completion(ctx: Context, prompt: str) -> str:
-    """Generate text using GPT-4."""
-    completion = openai_client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ]
+async def get_profile_details(
+    ctx: Context,
+    linkedin_url: str,
+    include_company_details: bool = True,
+    include_followers_count: bool = True
+) -> str:
+    """
+    Get detailed profile information for a LinkedIn user.
+    
+    Args:
+        linkedin_url: LinkedIn profile URL of the contact
+        include_company_details: Whether to include company information
+        include_followers_count: Whether to include follower count
+    """
+    enrichb2b = ctx.request_context.lifespan_context.enrichb2b
+    request = ContactRequest(linkedin_url=linkedin_url)
+    
+    ctx.info(f"Fetching profile details for {linkedin_url}")
+    result = enrichb2b.search_contact(
+        request,
+        include_company_details=include_company_details,
+        include_followers_count=include_followers_count
     )
-    return completion.choices[0].message.content
+    return str(result)
 
-# Example Tool - Anthropic Integration
 @mcp.tool()
-async def claude_completion(ctx: Context, prompt: str) -> str:
-    """Generate text using Claude."""
-    message = anthropic_client.messages.create(
-        model="claude-3-opus-20240229",
-        max_tokens=1000,
-        messages=[{
-            "role": "user",
-            "content": prompt
-        }]
+async def get_contact_activities(
+    ctx: Context,
+    linkedin_url: str,
+    pages: int = 1,
+    comments_per_post: int = 1
+) -> str:
+    """
+    Get recent activities and posts from a LinkedIn profile.
+    
+    Args:
+        linkedin_url: LinkedIn profile URL of the contact
+        pages: Number of pages of activities to fetch (1-50)
+        comments_per_post: Number of comment pages per post (0-50)
+    """
+    enrichb2b = ctx.request_context.lifespan_context.enrichb2b
+    request = ContactActivitiesRequest(
+        linkedin_url=linkedin_url,
+        how_many_pages=pages,
+        how_many_pages_comments_per_post=comments_per_post
     )
-    return message.content[0].text
+    
+    ctx.info(f"Fetching activities for {linkedin_url}")
+    await ctx.report_progress(0, 1)
+    result = enrichb2b.search_contact_activities(request)
+    await ctx.report_progress(1, 1)
+    return str(result)
 
-# Example Prompt
 @mcp.prompt()
-def analysis_prompt(text: str) -> str:
-    """Create an analysis prompt template."""
-    return f"Please analyze the following text:\n\n{text}"
+def research_profile(linkedin_url: str) -> str:
+    """Create a prompt for researching a LinkedIn profile."""
+    return f"""Please research this LinkedIn profile:
+
+{linkedin_url}
+
+Use the available tools to:
+1. Get detailed profile information
+2. Analyze their recent activities
+3. Summarize key findings about their professional background and engagement"""
+
+@mcp.prompt()
+def analyze_activities(linkedin_url: str) -> str:
+    """Create a prompt for analyzing LinkedIn activities."""
+    return f"""Please analyze the recent activities of this LinkedIn profile:
+
+{linkedin_url}
+
+Focus on:
+1. Types of content shared
+2. Engagement patterns
+3. Key topics and interests
+4. Professional network interactions"""
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "server:app",
-        host=os.getenv("HOST", "0.0.0.0"),
-        port=int(os.getenv("PORT", 8000)),
-        reload=os.getenv("ENV") == "development"
-    ) 
+    mcp.run() 
