@@ -1,0 +1,29 @@
+# Smithery configuration file: https://smithery.ai/docs/build/project-config
+
+startCommand:
+  type: stdio
+  commandFunction:
+    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
+    |-
+    (config) => ({command: 'python3', args: ['server.py'], env: {OPENAI_API_KEY: config.openaiApiKey, ANTHROPIC_API_KEY: config.anthropicApiKey, ENRICHB2B_API_KEY: config.enrichb2bApiKey}})
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - openaiApiKey
+      - anthropicApiKey
+      - enrichb2bApiKey
+    properties:
+      openaiApiKey:
+        type: string
+        description: API key for OpenAI
+      anthropicApiKey:
+        type: string
+        description: API key for Anthropic
+      enrichb2bApiKey:
+        type: string
+        description: API key for EnrichB2B
+  exampleConfig:
+    openaiApiKey: sk-xxxxx
+    anthropicApiKey: api-yyy
+    enrichb2bApiKey: key-zzz
