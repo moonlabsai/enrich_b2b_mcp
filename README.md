@@ -1,4 +1,5 @@
 # MCP Template Server
+[![smithery badge](https://smithery.ai/badge/@moonlabsai/enrich_b2b_mcp)](https://smithery.ai/server/@moonlabsai/enrich_b2b_mcp)
 
 A template server implementing the Model Context Protocol (MCP) with OpenAI, Anthropic, and EnrichB2B integration.
 
@@ -19,6 +20,14 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env with your API keys and configuration
+```
+
+### Installing via Smithery
+
+To install MCP Template Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@moonlabsai/enrich_b2b_mcp):
+
+```bash
+npx -y @smithery/cli install @moonlabsai/enrich_b2b_mcp --client claude
 ```
 
 ## Running the Server
