@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/moonlabsai-enrich-b2b-mcp-badge.png)](https://mseep.ai/app/moonlabsai-enrich-b2b-mcp)
+
 # MCP Template Server
 
 A template server implementing the Model Context Protocol (MCP) with OpenAI, Anthropic, and EnrichB2B integration.
